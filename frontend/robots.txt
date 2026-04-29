@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Block admin or private paths (add yours here)
+Disallow: /admin/
+Disallow: /cart/
+Disallow: /checkout/
+
+# Sitemap location
+Sitemap: https://www.sneakpeak.com/sitemap.xml
