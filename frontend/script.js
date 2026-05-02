@@ -1,5 +1,45 @@
 'use strict';
-/* SneakPeak Nepal — Full E-Commerce Script */
+
+// ── Load products from real backend ───────────
+async function loadProductsFromAPI() {
+    try {
+        productsGrid.innerHTML = `
+            <div style="grid-column:1/-1;text-align:center;padding:4rem;color:var(--text-light)">
+                <i class="fas fa-spinner fa-spin" style="font-size:2rem;margin-bottom:1rem;display:block"></i>
+                <p>Loading products...</p>
+            </div>`;
+
+        const res = await apiRequest('/products');
+
+        if (res.success && res.data.length > 0) {
+            const apiProducts = res.data.map(p => ({
+                id:            p._id,
+                name:          p.name,
+                code:          p.code,
+                price:         p.price,
+                originalPrice: p.originalPrice,
+                image:         p.images[0]?.url || '',
+                alt:           `${p.name} shoe`,
+                rating:        p.rating,
+                badge:         p.badge,
+                category:      p.category,
+                sizes:         p.sizes.map(s => s.size),
+                description:   p.description
+            }));
+
+            products.length = 0;
+            apiProducts.forEach(p => products.push(p));
+            renderProducts(products);
+            injectProductSchemas(products);
+        } else {
+            renderProducts(products);
+        }
+    } catch (error) {
+        console.error('Failed to load from API, using local data:', error);
+        renderProducts(products);
+        injectProductSchemas(products);
+    }
+}
 
 // ── Products (NPR prices, Nepal-ready) ──────────────
 const products = [
@@ -231,9 +271,8 @@ const successDetails= document.getElementById('successDetails');
 const successClose  = document.getElementById('successClose');
 
 // ── Init ──────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    renderProducts(products);
-    injectProductSchemas(products);
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadProductsFromAPI();
     setupEvents();
     setupHeaderScroll();
     setupScrollSpy();
@@ -391,9 +430,9 @@ function renderProducts(list) {
     }).join('');
 
     productsGrid.querySelectorAll('.add-to-cart-btn').forEach(btn =>
-        btn.addEventListener('click', () => openSizeModal(parseInt(btn.dataset.id))));
+        btn.addEventListener('click', () => openSizeModal(btn.dataset.id)));
     productsGrid.querySelectorAll('.product-wishlist').forEach(btn =>
-        btn.addEventListener('click', () => handleWishlist(parseInt(btn.dataset.id), btn)));
+        btn.addEventListener('click', () => handleWishlist(btn.dataset.id), btn));
 }
 
 function generateStars(r) {
@@ -552,24 +591,97 @@ function handleGoToPayment() {
     step2.style.display = 'block';
 }
 
-function handlePlaceOrder() {
-    const method = document.querySelector('input[name="payMethod"]:checked')?.value;
-    const name   = document.getElementById('cName')?.value.trim();
-    const phone  = document.getElementById('cPhone')?.value.trim();
-    const city   = document.getElementById('cCity')?.value;
-    const total  = cart.reduce((s,i) => s + i.price * i.qty, 0);
-    const orderId = 'SP-' + Date.now().toString().slice(-6);
+async function handlePlaceOrder() {
+    const method  = document.querySelector('input[name="payMethod"]:checked')?.value;
+    const name    = document.getElementById('cName')?.value.trim();
+    const phone   = document.getElementById('cPhone')?.value.trim();
+    const address = document.getElementById('cAddress')?.value.trim();
+    const city    = document.getElementById('cCity')?.value;
+    const note    = document.getElementById('cNote')?.value.trim();
 
-    if (method === 'esewa') {
-        showNotification('Redirecting to eSewa...', 'info');
-        // TODO: Replace with real eSewa integration
-        setTimeout(() => confirmOrder(orderId, name, phone, city, total, 'eSewa'), 1500);
-    } else if (method === 'khalti') {
-        showNotification('Redirecting to Khalti...', 'info');
-        // TODO: Replace with real Khalti integration
-        setTimeout(() => confirmOrder(orderId, name, phone, city, total, 'Khalti'), 1500);
-    } else {
-        confirmOrder(orderId, name, phone, city, total, 'Cash on Delivery');
+    if (!name || !phone || !address || !city) {
+        showNotification('Please fill all required fields.', 'error');
+        return;
+    }
+
+    const isValley    = ['Kathmandu','Lalitpur','Bhaktapur'].includes(city);
+    const deliveryFee = isValley ? 0 : 150;
+    const totalAmount = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+    const btn = document.getElementById('placeOrderBtn');
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Placing Order...';
+
+    try {
+        const orderData = {
+            customer: { name, phone, address, city, note },
+            items: cart.map(i => ({
+                product:  i.id,
+                name:     i.name,
+                price:    i.price,
+                size:     i.size,
+                quantity: i.qty,
+                image:    i.image
+            })),
+            totalAmount,
+            deliveryFee,
+            paymentMethod: method,
+            paymentStatus: 'pending',
+            orderStatus:   method === 'cod' ? 'confirmed' : 'pending'
+        };
+
+        const res = await apiRequest('/orders', {
+            method: 'POST',
+            body:   JSON.stringify(orderData)
+        });
+
+        if (res.success) {
+            if (method === 'esewa') {
+    showNotification('Redirecting to eSewa...', 'info');
+
+    // Get eSewa payment params from backend
+    const esewaRes = await apiRequest('/payment/esewa/initiate', {
+        method: 'POST',
+        body:   JSON.stringify({
+            orderId: res.data._id,
+            amount:  totalAmount + deliveryFee
+        })
+    });
+
+    if (esewaRes.success) {
+        // Create and submit form to eSewa
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = esewaRes.paymentUrl;
+
+        Object.entries(esewaRes.params).forEach(([key, value]) => {
+            const input   = document.createElement('input');
+            input.type    = 'hidden';
+            input.name    = key;
+            input.value   = value;
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+            } else if (method === 'khalti') {
+    // Coming soon — use COD for now
+    showNotification('Khalti coming soon! Please use eSewa or COD.', 'info');
+    btn.disabled  = false;
+    btn.innerHTML = '<i class="fas fa-lock"></i> Place Order';
+} else {
+                confirmOrder(
+                    res.data.orderNumber, name, phone, city,
+                    totalAmount + deliveryFee, 'Cash on Delivery'
+                );
+            }
+        }
+    } catch (error) {
+        console.error('Order error:', error);
+        showNotification('Failed to place order. Please try again.', 'error');
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fas fa-lock"></i> Place Order';
     }
 }
 

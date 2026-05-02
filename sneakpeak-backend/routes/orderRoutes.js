@@ -1,11 +1,17 @@
-const express = require('express');
-const router  = express.Router();
-const Order   = require('../models/Order');
+const express  = require('express');
+const router   = express.Router();
+const Order    = require('../models/Order');
+const { sendOrderConfirmation, sendAdminNotification } = require('../utils/sendEmail');
 
 // POST create order
 router.post('/', async (req, res) => {
     try {
         const order = await Order.create(req.body);
+
+        // Send emails (don't await — runs in background)
+        sendOrderConfirmation(order).catch(console.error);
+        sendAdminNotification(order).catch(console.error);
+
         res.status(201).json({ success: true, data: order });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
@@ -17,11 +23,23 @@ router.get('/', async (req, res) => {
     try {
         const { status, paymentStatus } = req.query;
         let filter = {};
-
         if (status)        filter.orderStatus   = status;
         if (paymentStatus) filter.paymentStatus = paymentStatus;
-
         const orders = await Order.find(filter).sort({ createdAt: -1 });
+        res.json({ success: true, count: orders.length, data: orders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET my orders
+router.get('/my-orders', async (req, res) => {
+    try {
+        const { phone } = req.query;
+        if (!phone) {
+            return res.status(400).json({ success: false, message: 'Phone required' });
+        }
+        const orders = await Order.find({ 'customer.phone': phone }).sort({ createdAt: -1 });
         res.json({ success: true, count: orders.length, data: orders });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -46,16 +64,11 @@ router.patch('/:id/status', async (req, res) => {
     try {
         const { orderStatus, paymentStatus } = req.body;
         const update = {};
-
         if (orderStatus)   update.orderStatus   = orderStatus;
         if (paymentStatus) update.paymentStatus = paymentStatus;
-
         const order = await Order.findByIdAndUpdate(
-            req.params.id,
-            update,
-            { new: true }
+            req.params.id, update, { new: true }
         );
-
         if (!order) {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
