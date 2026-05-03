@@ -42,7 +42,7 @@
 
         // Verify payment with backend
         if (method === 'khalti' && pidx) {
-            fetch('http://localhost:3000/api/payment/khalti/verify', {
+            fetch('https://sneakpeak-backend.onrender.com/api/payment/khalti/verify', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ pidx, orderId })
