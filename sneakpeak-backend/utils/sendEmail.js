@@ -1,19 +1,6 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-    host:   'smtp.gmail.com',
-    port:   465,
-    secure: true,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
-
-transporter.verify((error) => {
-    if (error) console.error('❌ Email error:', error.message);
-    else       console.log('✅ Email server ready');
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const sendOrderConfirmation = async (order) => {
     try {
@@ -36,9 +23,9 @@ const sendOrderConfirmation = async (order) => {
             ? 'Free delivery inside Kathmandu Valley'
             : `Delivery fee: NPR ${order.deliveryFee}`;
 
-        await transporter.sendMail({
-            from:    `"SneakPeak Nepal 👟" <${process.env.EMAIL_USER}>`,
-            to:      order.customer.email || process.env.EMAIL_USER,
+        await resend.emails.send({
+            from:    'SneakPeak Nepal <onboarding@resend.dev>',
+            to:      [order.customer.email || process.env.ADMIN_EMAIL],
             subject: `Order Confirmed! #${order.orderNumber} — SneakPeak`,
             html: `
 <!DOCTYPE html>
@@ -49,7 +36,7 @@ const sendOrderConfirmation = async (order) => {
             <h1 style="color:white;margin:0;font-size:2rem;font-weight:800;">SneakPeak</h1>
             <p style="color:rgba(255,255,255,0.85);margin:0.5rem 0 0">Premium Footwear Nepal</p>
         </div>
-        <div style="background:white;padding:2.5rem;border-radius:0 0 16px 16px;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+        <div style="background:white;padding:2.5rem;border-radius:0 0 16px 16px;">
             <div style="text-align:center;margin-bottom:2rem;">
                 <span style="font-size:3rem;">✅</span>
                 <h2 style="color:#0f172a;margin:1rem 0 0;">Order Confirmed!</h2>
@@ -72,9 +59,9 @@ const sendOrderConfirmation = async (order) => {
             <table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;">
                 <thead>
                     <tr style="background:#f8fafc;">
-                        <th style="padding:12px;text-align:left;color:#6b7280;font-size:0.85rem;">Product</th>
-                        <th style="padding:12px;text-align:center;color:#6b7280;font-size:0.85rem;">Qty</th>
-                        <th style="padding:12px;text-align:right;color:#6b7280;font-size:0.85rem;">Price</th>
+                        <th style="padding:12px;text-align:left;color:#6b7280;">Product</th>
+                        <th style="padding:12px;text-align:center;color:#6b7280;">Qty</th>
+                        <th style="padding:12px;text-align:right;color:#6b7280;">Price</th>
                     </tr>
                 </thead>
                 <tbody>${itemsHTML}</tbody>
@@ -88,10 +75,10 @@ const sendOrderConfirmation = async (order) => {
                 </tfoot>
             </table>
             <div style="background:#f0f9ff;border-radius:12px;padding:1.5rem;border-left:4px solid #3b82f6;">
-                <h3 style="margin:0 0 1rem;font-size:1rem;">📦 Delivery Details</h3>
-                <p style="margin:0.4rem 0;color:#374151;"><strong>Name:</strong> ${order.customer.name}</p>
-                <p style="margin:0.4rem 0;color:#374151;"><strong>Phone:</strong> ${order.customer.phone}</p>
-                <p style="margin:0.4rem 0;color:#374151;"><strong>Address:</strong> ${order.customer.address}, ${order.customer.city}</p>
+                <h3 style="margin:0 0 1rem;">📦 Delivery Details</h3>
+                <p style="margin:0.4rem 0;"><strong>Name:</strong> ${order.customer.name}</p>
+                <p style="margin:0.4rem 0;"><strong>Phone:</strong> ${order.customer.phone}</p>
+                <p style="margin:0.4rem 0;"><strong>Address:</strong> ${order.customer.address}, ${order.customer.city}</p>
                 <p style="margin:0.4rem 0;color:#10b981;">🚚 ${deliveryMsg}</p>
             </div>
         </div>
@@ -110,9 +97,9 @@ const sendOrderConfirmation = async (order) => {
 
 const sendAdminNotification = async (order) => {
     try {
-        await transporter.sendMail({
-            from:    `"SneakPeak Orders" <${process.env.EMAIL_USER}>`,
-            to:      process.env.EMAIL_USER,
+        await resend.emails.send({
+            from:    'SneakPeak Orders <onboarding@resend.dev>',
+            to:      [process.env.ADMIN_EMAIL],
             subject: `🛍️ New Order #${order.orderNumber} — NPR ${order.totalAmount.toLocaleString()}`,
             html: `
                 <h2>New Order Received!</h2>
@@ -125,7 +112,7 @@ const sendAdminNotification = async (order) => {
                 <hr>
                 <h3>Items:</h3>
                 ${order.items.map(i => `
-                    <p>${i.name} — Size ${i.size} × ${i.quantity} = NPR ${i.price * i.quantity}</p>
+                    <p>${i.name} — Size ${i.size} × ${i.quantity} = NPR ${(i.price * i.quantity).toLocaleString()}</p>
                 `).join('')}
             `
         });
