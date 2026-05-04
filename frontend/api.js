@@ -2,7 +2,7 @@
    SneakPeak — API Connection to Backend
    ============================================= */
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'https://sneakpeak-backend.onrender.com/api';
 
 const apiRequest = async (endpoint, options = {}) => {
     try {
