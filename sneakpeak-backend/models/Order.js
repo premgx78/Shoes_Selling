@@ -51,11 +51,11 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Auto-generate order number
-// Auto-generate order number
 orderSchema.pre('save', async function() {
     if (!this.orderNumber) {
-        const count      = await mongoose.model('Order').countDocuments();
-        this.orderNumber = `SP-${String(count + 1).padStart(4, '0')}`;
+        // Use timestamp to guarantee uniqueness
+        const timestamp = Date.now().toString().slice(-6);
+        this.orderNumber = `SP-${timestamp}`;
     }
 });
 
